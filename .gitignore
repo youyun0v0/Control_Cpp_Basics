@@ -1,0 +1,10 @@
+build/
+*.exe
+*.obj
+*.o
+*.a
+*.log
+.vscode/
+
+handout/
+*.md/

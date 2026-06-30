@@ -1,6 +1,8 @@
 #include <iostream>
 
 #include "control_basics/MathUtils.h"
+#include "control_basics/LowPassFilter.h"
+#include "control_basics/PIDController.h"
 
 int main() {
     const double samples1[] = {1.0, 5.0 ,3.0};
@@ -9,5 +11,17 @@ int main() {
     const double max2 = control_basics::max_value(samples2,3);
     std::cout<<"max1="<<max1<<std::endl;
     std::cout<<"max2="<<max2<<std::endl;
+
+    control_basics::LowPassFilter filter(0.5);
+    filter.update(10.0);
+    filter.update(14.0);
+    filter.update(16.0);
+    std::cout<<"Filter output="<<filter.output()<<std::endl;
+
+    control_basics::PIDController pid(5.0, 20.0, 10.0);
+    pid.set_integral_limits(-100, 100);
+    pid.set_output_limits(-100, 100);
+    std::cout<<"pid output="<<pid.update(10.0, 20.0, 0.1)<<std::endl;
+
     return 0;
 }

@@ -9,6 +9,9 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 add_library(control_basics
     src/MathUtils.cpp
     src/SignalUtils.cpp
+    src/Counter.cpp
+    src/LowPassFilter.cpp
+    src/PIDController.cpp
 )
 # 生成静态库,里面包含了我们写的数学工具函数
 # 库是供主程序和测试程序调用的工具函数
@@ -33,6 +36,18 @@ add_executable(test_signalutils
     tests/test_signal_utils.cpp
 )
 
+add_executable(test_counter
+    tests/test_counter.cpp
+)
+
+add_executable(test_LowPassFilter
+    tests/test_lowpassfilter.cpp
+)
+
+add_executable(test_pid_controller
+    tests/test_pid_controller.cpp
+)
+
 target_link_libraries(day01_app
     PRIVATE
         control_basics
@@ -46,6 +61,21 @@ target_link_libraries(day01_test
 # 测试程序也需要调用里面的函数
 
 target_link_libraries(test_signalutils
+    PRIVATE
+        control_basics
+)
+
+target_link_libraries(test_counter
+    PRIVATE
+        control_basics
+)
+
+target_link_libraries(test_LowPassFilter
+    PRIVATE
+        control_basics
+)
+
+target_link_libraries(test_pid_controller
     PRIVATE
         control_basics
 )

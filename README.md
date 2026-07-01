@@ -19,20 +19,27 @@ control_cpp_basics/
       Counter.h
       LowPassFilter.h
       MathUtils.h
+      MovingAverageFilter.h
       PIDController.h
+      RingBuffer.h
       SignalUtils.h
   src/
     Counter.cpp
     LowPassFilter.cpp
     MathUtils.cpp
+    MovingAverageFilter.cpp
     PIDController.cpp
+    RingBuffer.cpp
     SignalUtils.cpp
     main.cpp
   tests/
+    test_array_basics.cpp
     test_counter.cpp
     test_lowpassfilter.cpp
     test_math_utils.cpp
+    test_moving_average_filter.cpp
     test_pid_controller.cpp
+    test_ring_buffer.cpp
     test_signal_utils.cpp
   README.md
 ```
@@ -111,6 +118,43 @@ PID 控制器模块，用于练习控制器类封装。
 - `output_min_ / output_max_`：输出限幅
 - `integral_min_ / integral_max_`：积分限幅
 
+### `RingBuffer`
+
+固定容量环形缓冲区，用于保存最近一段采样数据。
+
+已实现：
+
+- `push(value)`：写入一个新数据，写满后覆盖最旧数据
+- `clear()`：清空缓冲区状态
+- `count()`：读取当前有效数据数量
+- `capacity()`：读取固定容量
+- `empty()`：判断是否为空
+- `full()`：判断是否已满
+- `latest()`：读取最近一次写入的数据
+- `at(index)`：按从旧到新的时间顺序读取第 `index` 个有效数据
+
+内部状态：
+
+- `data_`：固定容量数组
+- `write_index_`：下一次写入的位置
+- `count_`：当前有效数据数量
+
+### `MovingAverageFilter`
+
+移动平均滤波器，用于对最近一段采样数据求平均。
+
+已实现：
+
+- `update(input)`：写入新采样并返回当前移动平均值
+- `output()`：读取当前输出
+- `reset()`：清空内部缓冲区和输出
+- `count()`：读取当前参与平均的有效数据数量
+
+内部状态：
+
+- `buffer_`：保存最近采样值的 `RingBuffer`
+- `output_`：当前移动平均输出
+
 ## 编译方法
 
 在项目目录下运行：
@@ -129,21 +173,24 @@ cmake --build build
 ## 运行主程序
 
 ```powershell
-.\build\day01_app.exe
+.\build\main_test.exe
 ```
 
-主程序会演示部分数学工具函数、低通滤波器和 PID 控制器的基本调用。
+主程序会演示部分数学工具函数、低通滤波器、PID 控制器和移动平均滤波器的基本调用。
 
 ## 测试方法
 
 运行全部测试：
 
 ```powershell
-.\build\day01_test.exe
+.\build\test_math_utils.exe
 .\build\test_signalutils.exe
 .\build\test_counter.exe
 .\build\test_LowPassFilter.exe
 .\build\test_pid_controller.exe
+.\build\test_array_basics.exe
+.\build\test_ring_buffer.exe
+.\build\test_moving_average_filter.exe
 ```
 
 测试程序没有输出表示通过。如果断言失败，程序会中止并报错。
@@ -201,6 +248,35 @@ cmake --build build
 - `dt <= 0.0` 时返回 `0.0`
 - `reset()` 清空积分项和上一次误差
 
+### `test_array_basics`
+
+验证：
+
+- `std::array` 固定长度数组能保存采样数据
+- 模板函数能接收不同长度的 `std::array`
+- 平均值计算结果正确
+
+### `test_ring_buffer`
+
+验证：
+
+- 初始状态为空，容量为 `8`
+- 写入单个数据后 `count()` 和 `latest()` 正确
+- 刚好写满后，`at()` 能按从旧到新的顺序读出 `1.0` 到 `8.0`
+- 写满后继续写入时，最旧数据被覆盖
+- 越界读取返回 `0.0`
+- `clear()` 后回到空状态
+
+### `test_moving_average_filter`
+
+验证：
+
+- 初始输出为 `0.0`
+- 窗口未满时，按当前有效数据数量求平均
+- 写满 8 个数据后，平均值正确
+- 超过容量后，只对最近 8 个数据求平均
+- `reset()` 后 `count()` 为 `0`，`output()` 为 `0.0`
+
 ## 第一周学习记录
 
 - 学习了 C++ 最小工程结构。
@@ -221,6 +297,18 @@ cmake --build build
 - 理解了 `reset()` 对有状态控制模块的重要性。
 - 学会了为有状态模块设计连续调用测试、边界测试和状态重置测试。
 
+## 第三周学习记录
+
+- 学习了 `std::array` 固定长度数组，理解了固定容量数据结构更适合嵌入式控制场景。
+- 实现了 `RingBuffer` 环形缓冲区，用固定容量数组保存最近 8 个采样值。
+- 理解了 `write_index_` 表示下一次写入位置，不是最近写入位置。
+- 理解了缓冲区写满后，`write_index_` 指向当前最旧数据的位置；`latest()` 读取的是 `write_index_` 的前一位。
+- 实现了 `at(index)`，按从旧到新的时间顺序读取有效数据。
+- 学会了测试空缓冲区、未满、刚满、超过容量、越界读取和 `clear()` 后状态。
+- 实现了 `MovingAverageFilter`，基于 `RingBuffer` 对最近采样值求平均。
+- 理解了移动平均可以平滑采样数据，但会受到历史数据影响，因此会引入延迟。
+- 理解了测试环形缓冲区时不能使用一堆相同值，否则会掩盖顺序错误。
+
 ## 当前阶段检查标准
 
 完成当前项目后，应能独立说明：
@@ -234,16 +322,20 @@ cmake --build build
 - 为什么 PID 需要保存积分项和上一次误差。
 - 为什么测试有状态模块时不能只调用一次。
 - 为什么边界测试能发现正常输入测不出的错误。
+- 为什么环形缓冲区写满后，内部数组顺序不一定等于时间顺序。
+- 为什么 `at(0)` 表示最旧的有效数据，而 `latest()` 表示最近写入的数据。
+- 为什么移动平均窗口未满时，分母应使用有效数据数量。
+- 为什么移动平均会让数据更平滑，同时也引入响应延迟。
 
 ## 后续计划
 
 下一阶段建议继续实现：
 
-- `std::array` 固定长度数据练习
-- `RingBuffer` 环形缓冲区
-- 移动平均滤波器
-- 采样数据窗口
-- 串口数据包解析器
+- `enum class` 状态枚举
 - 简单状态机
+- `MotionStateMachine` 或 `DeviceStateMachine`
+- `IDLE / RUNNING / ERROR / STOPPED` 状态切换
+- 错误码和故障恢复
+- 状态机测试
 
 后续重点应继续贴近嵌入式控制场景：固定内存、确定性执行、状态清晰、测试可复现。

@@ -12,6 +12,8 @@ add_library(control_basics
     src/Counter.cpp
     src/LowPassFilter.cpp
     src/PIDController.cpp
+    src/RingBuffer.cpp
+    src/MovingAverageFilter.cpp
 )
 # 生成静态库,里面包含了我们写的数学工具函数
 # 库是供主程序和测试程序调用的工具函数
@@ -22,12 +24,12 @@ target_include_directories(control_basics
 )
 # 让主程序和测试程序都能找到头文件：头文件在include目录下的control_basics文件夹里
 
-add_executable(day01_app
+add_executable(main_test
     src/main.cpp
 )
 # 生成主程序，主程序在src目录下的main.cpp里
 
-add_executable(day01_test
+add_executable(test_math_utils
     tests/test_math_utils.cpp
 )
 # 生成测试程序,没输出就说明测试通过
@@ -48,13 +50,25 @@ add_executable(test_pid_controller
     tests/test_pid_controller.cpp
 )
 
-target_link_libraries(day01_app
+add_executable(test_array_basics
+    tests/test_array_basics.cpp
+)
+
+add_executable(test_ring_buffer
+    tests/test_ring_buffer.cpp
+)
+
+add_executable(test_moving_average_filter
+    tests/test_moving_average_filter.cpp
+)
+
+target_link_libraries(main_test
     PRIVATE
         control_basics
 )
 # 主程序需要调用里面的函数
 
-target_link_libraries(day01_test
+target_link_libraries(test_math_utils
     PRIVATE
         control_basics
 )
@@ -76,6 +90,16 @@ target_link_libraries(test_LowPassFilter
 )
 
 target_link_libraries(test_pid_controller
+    PRIVATE
+        control_basics
+)
+
+target_link_libraries(test_ring_buffer
+    PRIVATE
+        control_basics
+)
+
+target_link_libraries(test_moving_average_filter
     PRIVATE
         control_basics
 )

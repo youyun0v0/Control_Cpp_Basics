@@ -19,6 +19,7 @@ control_cpp_basics/
       Counter.h
       LowPassFilter.h
       MathUtils.h
+      MotionStateMachine.h
       MovingAverageFilter.h
       PIDController.h
       RingBuffer.h
@@ -27,6 +28,7 @@ control_cpp_basics/
     Counter.cpp
     LowPassFilter.cpp
     MathUtils.cpp
+    MotionStateMachine.cpp
     MovingAverageFilter.cpp
     PIDController.cpp
     RingBuffer.cpp
@@ -37,6 +39,7 @@ control_cpp_basics/
     test_counter.cpp
     test_lowpassfilter.cpp
     test_math_utils.cpp
+    test_motion_state_machine.cpp
     test_moving_average_filter.cpp
     test_pid_controller.cpp
     test_ring_buffer.cpp
@@ -155,6 +158,41 @@ PID 控制器模块，用于练习控制器类封装。
 - `buffer_`：保存最近采样值的 `RingBuffer`
 - `output_`：当前移动平均输出
 
+### `MotionStateMachine`
+
+简化运动设备状态机，用于练习设备状态管理、错误处理和急停逻辑。
+
+状态枚举：
+
+- `Idle`：空闲，允许启动
+- `Running`：正在运行，不允许重复启动
+- `Stopped`：正常停止，允许再次启动
+- `Error`：错误状态，不允许直接启动
+
+错误码枚举：
+
+- `None`：无错误
+- `LimitTriggered`：限位触发
+- `SensorInvalid`：传感器数据无效
+- `EmergencyStop`：急停
+
+已实现：
+
+- `start()`：在 `Idle` 或 `Stopped` 状态下启动，进入 `Running`
+- `stop()`：在 `Running` 状态下正常停止，进入 `Stopped`
+- `set_error(error)`：进入 `Error` 状态并记录错误码
+- `reset_error()`：从 `Error` 状态恢复到 `Idle`，并清空错误码
+- `emergency_stop()`：急停，等价于 `set_error(ErrorCode::EmergencyStop)`
+- `can_start()`：判断当前是否允许启动
+- `is_error()`：判断当前是否处于错误状态
+- `state()`：读取当前状态
+- `error()`：读取当前错误码
+
+内部状态：
+
+- `state_`：当前设备状态
+- `error_`：当前错误码
+
 ## 编译方法
 
 在项目目录下运行：
@@ -176,7 +214,7 @@ cmake --build build
 .\build\main_test.exe
 ```
 
-主程序会演示部分数学工具函数、低通滤波器、PID 控制器和移动平均滤波器的基本调用。
+主程序会演示部分数学工具函数、低通滤波器、PID 控制器、移动平均滤波器和状态机的基本调用。
 
 ## 测试方法
 
@@ -191,6 +229,7 @@ cmake --build build
 .\build\test_array_basics.exe
 .\build\test_ring_buffer.exe
 .\build\test_moving_average_filter.exe
+.\build\test_motion_state_machine.exe
 ```
 
 测试程序没有输出表示通过。如果断言失败，程序会中止并报错。
@@ -277,6 +316,22 @@ cmake --build build
 - 超过容量后，只对最近 8 个数据求平均
 - `reset()` 后 `count()` 为 `0`，`output()` 为 `0.0`
 
+### `test_motion_state_machine`
+
+验证：
+
+- 初始状态为 `Idle`
+- 初始状态允许启动
+- `start()` 后进入 `Running`
+- `Running` 状态下不允许重复启动
+- `stop()` 后进入 `Stopped`
+- `Stopped` 状态允许再次启动
+- `Idle` 状态下 `stop()` 失败，并保持 `Idle`
+- `set_error()` 后进入 `Error`
+- `Error` 状态下 `start()` 失败
+- `emergency_stop()` 后错误码为 `EmergencyStop`
+- `reset_error()` 后恢复到 `Idle`
+
 ## 第一周学习记录
 
 - 学习了 C++ 最小工程结构。
@@ -309,6 +364,17 @@ cmake --build build
 - 理解了移动平均可以平滑采样数据，但会受到历史数据影响，因此会引入延迟。
 - 理解了测试环形缓冲区时不能使用一堆相同值，否则会掩盖顺序错误。
 
+## 第四周学习记录
+
+- 学习了 `enum class`，用它表示有限状态和错误码。
+- 实现了 `MotionStateMachine`，理解了状态机用于约束设备行为。
+- 理解了状态和动作的区别：`Idle / Running / Stopped / Error` 是状态，`start()`、`stop()`、`emergency_stop()` 是动作。
+- 理解了状态切换规则：不是任何动作在任何状态下都允许执行。
+- 学会了用 `bool` 返回值表示动作是否成功。
+- 加入了错误码 `ErrorCode`，能记录进入错误状态的原因。
+- 理解了普通停止和急停的区别：普通停止进入 `Stopped`，急停进入 `Error`。
+- 学会了测试合法切换、非法切换、错误阻塞启动和错误复位。
+
 ## 当前阶段检查标准
 
 完成当前项目后，应能独立说明：
@@ -326,16 +392,21 @@ cmake --build build
 - 为什么 `at(0)` 表示最旧的有效数据，而 `latest()` 表示最近写入的数据。
 - 为什么移动平均窗口未满时，分母应使用有效数据数量。
 - 为什么移动平均会让数据更平滑，同时也引入响应延迟。
+- 为什么状态机不能让外部直接修改 `state_`。
+- 为什么 `start()` 和 `stop()` 要根据当前状态决定是否成功。
+- 为什么错误状态下不能直接启动。
+- 为什么急停应进入 `Error`，而不是普通 `Stopped`。
+- 为什么测试状态机时要同时测试合法切换和非法切换。
 
 ## 后续计划
 
 下一阶段建议继续实现：
 
-- `enum class` 状态枚举
-- 简单状态机
-- `MotionStateMachine` 或 `DeviceStateMachine`
-- `IDLE / RUNNING / ERROR / STOPPED` 状态切换
-- 错误码和故障恢复
-- 状态机测试
+- 串口命令解析
+- 简单命令格式
+- `START / STOP / RESET / STATUS` 命令
+- 命令解析结果和 `MotionStateMachine` 的连接
+- 简单命令队列
+- 命令合法性测试
 
-后续重点应继续贴近嵌入式控制场景：固定内存、确定性执行、状态清晰、测试可复现。
+后续重点应继续贴近嵌入式控制场景：固定内存、确定性执行、状态清晰、命令入口清楚、测试可复现。

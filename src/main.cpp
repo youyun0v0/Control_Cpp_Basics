@@ -4,6 +4,7 @@
 #include "control_basics/LowPassFilter.h"
 #include "control_basics/PIDController.h"
 #include "control_basics/MovingAverageFilter.h"
+#include "control_basics/MotionStateMachine.h"
 
 int main() {
     //最大值函数演示
@@ -32,5 +33,12 @@ int main() {
     std::cout<<"input 50. Average="<<MAF.update(50.0)<<std::endl;
     std::cout<<"input 12. Average="<<MAF.update(12.0)<<std::endl;
     std::cout<<"input 11. Average="<<MAF.update(11.0)<<std::endl;
+    //状态机演示
+    control_basics::MotionStateMachine motion;
+    std::cout << "can start: " << (motion.can_start() ? "true":"false") << '\n';
+    motion.start();
+    std::cout << "can start after running: " << (motion.can_start() ? "true":"false") << '\n';
+    motion.emergency_stop();
+    std::cout << "is error: " << (motion.is_error() ? "true":"false") << '\n';
     return 0;
 }

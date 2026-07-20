@@ -16,6 +16,9 @@ control_cpp_basics/
   CMakeLists.txt
   include/
     control_basics/
+      CommandExecutor.h
+      CommandParser.h
+      CommandQueue.h
       Counter.h
       LowPassFilter.h
       MathUtils.h
@@ -25,6 +28,9 @@ control_cpp_basics/
       RingBuffer.h
       SignalUtils.h
   src/
+    CommandExecutor.cpp
+    CommandParser.cpp
+    CommandQueue.cpp
     Counter.cpp
     LowPassFilter.cpp
     MathUtils.cpp
@@ -36,6 +42,10 @@ control_cpp_basics/
     main.cpp
   tests/
     test_array_basics.cpp
+    test_command_executor.cpp
+    test_command_flow.cpp
+    test_command_parser.cpp
+    test_command_queue.cpp
     test_counter.cpp
     test_lowpassfilter.cpp
     test_math_utils.cpp
@@ -193,6 +203,85 @@ PID 控制器模块，用于练习控制器类封装。
 - `state_`：当前设备状态
 - `error_`：当前错误码
 
+### `CommandParser`
+
+串口命令解析器，用于把外部输入的字符串命令转换成程序内部的命令类型。
+
+命令枚举：
+
+- `Start`：启动命令
+- `Stop`：停止命令
+- `Reset`：错误复位命令
+- `Status`：状态查询命令
+- `Unknown`：未知命令
+
+解析状态枚举：
+
+- `Ok`：解析成功
+- `Empty`：输入为空或标准化后为空
+- `Unknown`：无法识别的命令
+
+已实现：
+
+- `parse(input)`：解析字符串并返回 `ParseResult`
+- `normalize(input)`：整理输入，去掉前后空白，并把字母统一转成大写
+
+内部规则：
+
+- `"START"`、`" start "`、`"start"` 都会解析为 `CommandType::Start`
+- `"STOP\r\n"` 会解析为 `CommandType::Stop`
+- 空字符串或只有空白字符的输入会返回 `ParseStatus::Empty`
+- 未知输入会返回 `ParseStatus::Unknown`
+
+### `CommandExecutor`
+
+命令执行器，用于把已经解析好的命令真正执行到 `MotionStateMachine`。
+
+执行状态枚举：
+
+- `Ok`：命令执行成功
+- `Rejected`：命令合法，但当前状态机状态不允许执行
+- `InvalidCommand`：无效命令
+
+已实现：
+
+- `execute(command, machine)`：根据命令调用状态机动作，并返回 `ExecuteResult`
+
+命令和状态机动作的对应关系：
+
+- `CommandType::Start` 调用 `machine.start()`
+- `CommandType::Stop` 调用 `machine.stop()`
+- `CommandType::Reset` 调用 `machine.reset_error()`
+- `CommandType::Status` 只读取当前状态，不改变状态机
+- `CommandType::Unknown` 返回 `InvalidCommand`
+
+### `CommandQueue`
+
+固定容量命令队列，用于暂存已经解析成功、等待执行的命令。
+
+已实现：
+
+- `push(command)`：将命令放入队列
+- `pop(command)`：按先进先出顺序取出命令
+- `clear()`：清空队列
+- `count()`：读取当前命令数量
+- `capacity()`：读取固定容量
+- `empty()`：判断队列是否为空
+- `full()`：判断队列是否已满
+
+内部状态：
+
+- `data_`：固定容量命令数组
+- `head_`：下一次读取的位置
+- `tail_`：下一次写入的位置
+- `count_`：当前队列中的命令数量
+
+核心规则：
+
+- 命令队列按先进先出顺序工作
+- 队列满时拒绝继续写入
+- 未知命令不应进入正常执行流程
+
 ## 编译方法
 
 在项目目录下运行：
@@ -230,6 +319,10 @@ cmake --build build
 .\build\test_ring_buffer.exe
 .\build\test_moving_average_filter.exe
 .\build\test_motion_state_machine.exe
+.\build\test_command_parser.exe
+.\build\test_command_executor.exe
+.\build\test_command_queue.exe
+.\build\test_command_flow.exe
 ```
 
 测试程序没有输出表示通过。如果断言失败，程序会中止并报错。
@@ -332,6 +425,52 @@ cmake --build build
 - `emergency_stop()` 后错误码为 `EmergencyStop`
 - `reset_error()` 后恢复到 `Idle`
 
+### `test_command_parser`
+
+验证：
+
+- `START / STOP / RESET / STATUS` 能解析成对应 `CommandType`
+- 解析成功时返回 `ParseStatus::Ok`
+- 空字符串返回 `ParseStatus::Empty`
+- 未知字符串返回 `ParseStatus::Unknown`
+- 带前后空格的命令可以解析
+- 带 `\r\n` 的命令可以解析
+- 小写或混合大小写命令可以解析
+- 只有空白字符的输入返回 `ParseStatus::Empty`
+
+### `test_command_executor`
+
+验证：
+
+- `Start` 命令能让空闲状态机进入 `Running`
+- `Stop` 命令能让运行状态机进入 `Stopped`
+- `Reset` 命令能让错误状态机恢复到 `Idle`
+- `Status` 命令只读取状态，不改变状态机
+- `Unknown` 命令返回 `InvalidCommand`
+- 错误状态下执行 `Start` 会被拒绝，并保持错误状态
+
+### `test_command_queue`
+
+验证：
+
+- 新建队列为空
+- `push()` 后命令数量增加
+- `pop()` 按先进先出顺序取出命令
+- 空队列 `pop()` 失败
+- 队列写满后 `full()` 为 `true`
+- 满队列继续 `push()` 失败
+- `clear()` 后队列恢复为空
+
+### `test_command_flow`
+
+验证：
+
+- 单条 `"START"` 可以经过解析、入队、出队、执行后让状态机进入 `Running`
+- 未知输入解析失败后不进入队列，队列保持为空
+- 多条输入 `" start\r\n"`、`" StATus"`、`" STOP  "` 能按顺序执行
+- `Status` 命令不会改变状态机状态
+- 完整流程最终可以让状态机从 `Idle` 进入 `Running`，再进入 `Stopped`
+
 ## 第一周学习记录
 
 - 学习了 C++ 最小工程结构。
@@ -375,6 +514,19 @@ cmake --build build
 - 理解了普通停止和急停的区别：普通停止进入 `Stopped`，急停进入 `Error`。
 - 学会了测试合法切换、非法切换、错误阻塞启动和错误复位。
 
+## 第五周学习记录
+
+- 学习了把外部字符串命令解析成程序内部命令枚举。
+- 实现了 `CommandParser`，支持 `START / STOP / RESET / STATUS`。
+- 理解了真实输入可能带空格、换行和大小写差异，因此需要先做输入标准化。
+- 理解了 `ParseStatus` 表示字符串是否解析成功，`CommandType` 表示解析出的命令类型。
+- 实现了 `CommandExecutor`，把 `CommandType` 连接到 `MotionStateMachine` 的动作函数。
+- 理解了 `ExecuteStatus` 表示命令是否执行成功，和设备本身的 `MotionState` 不是同一件事。
+- 理解了 `Parser` 只负责看懂字符串，`Executor` 只负责执行命令，`MotionStateMachine` 负责判断动作能不能生效。
+- 实现了固定容量 `CommandQueue`，按先进先出顺序保存待执行命令。
+- 理解了命令队列和采样环形缓冲区的区别：采样数据可以覆盖旧值，未执行命令不能随便覆盖。
+- 学会了写从原始输入到状态机执行结果的完整流程测试。
+
 ## 当前阶段检查标准
 
 完成当前项目后，应能独立说明：
@@ -397,16 +549,25 @@ cmake --build build
 - 为什么错误状态下不能直接启动。
 - 为什么急停应进入 `Error`，而不是普通 `Stopped`。
 - 为什么测试状态机时要同时测试合法切换和非法切换。
+- 为什么外部字符串命令不能直接修改状态机。
+- 为什么要先把字符串解析成 `CommandType`，再执行命令。
+- 为什么 `Parser` 和 `Executor` 要分开。
+- 为什么 `ParseStatus`、`CommandType`、`ExecuteStatus`、`MotionState` 不是同一类概念。
+- 为什么 `Status` 命令只查询状态，不应该改变状态机。
+- 为什么命令队列应按先进先出顺序执行。
+- 为什么解析失败的命令不应该进入正常执行流程。
+- 如何说明一条输入命令从字符串到状态机动作的完整路径。
 
 ## 后续计划
 
-下一阶段建议继续实现：
+下一阶段建议继续实现带参数命令：
 
-- 串口命令解析
-- 简单命令格式
-- `START / STOP / RESET / STATUS` 命令
-- 命令解析结果和 `MotionStateMachine` 的连接
-- 简单命令队列
-- 命令合法性测试
+- `SET_SPEED 120`
+- `MOVE 10 20`
+- 参数数量检查
+- 参数范围检查
+- 字符串转数字
+- 命令错误信息
+- 更接近 G-code 子集的命令格式
 
-后续重点应继续贴近嵌入式控制场景：固定内存、确定性执行、状态清晰、命令入口清楚、测试可复现。
+后续重点应继续贴近嵌入式控制场景：固定内存、确定性执行、状态清晰、命令入口清楚、输入合法性明确、测试可复现。

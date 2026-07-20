@@ -7,30 +7,32 @@ enum class MotionState {
     Running,
     Stopped,
     Error
-};
+};//机器状态
 
 enum class ErrorCode {
     None,
     LimitTriggered,
     SensorInvalid,
     EmergencyStop
-};
+};//错误码
 
 class MotionStateMachine {
     public:
-    MotionStateMachine();
+    MotionStateMachine(); //初始化
+
+    //查询类：状态，错误码，是否错误，是否可以启动
     MotionState state() const;
-
-    bool start();
-    bool stop();
-
-    void set_error(ErrorCode error);
-    bool reset_error();
     ErrorCode error() const;
     bool is_error() const;
-
-    void emergency_stop();
     bool can_start() const;
+
+    //操作类：开启，停止，设置错误码，错误清除，急停
+    bool start();
+    bool stop();
+    void set_error(ErrorCode error);
+    bool reset_error();
+    void emergency_stop();
+    
 
     private:
     MotionState state_;

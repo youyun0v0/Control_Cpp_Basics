@@ -15,6 +15,9 @@ add_library(control_basics
     src/RingBuffer.cpp
     src/MovingAverageFilter.cpp
     src/MotionStateMachine.cpp
+    src/CommandParser.cpp
+    src/CommandExecutor.cpp
+    src/CommandQueue.cpp
 )
 # 生成静态库,里面包含了我们写的数学工具函数
 # 库是供主程序和测试程序调用的工具函数
@@ -67,6 +70,22 @@ add_executable(test_motion_state_machine
     tests/test_motion_state_machine.cpp
 )
 
+add_executable(test_command_parser
+    tests/test_command_parser.cpp
+)
+
+add_executable(test_command_executor
+    tests/test_command_executor.cpp
+)
+
+add_executable(test_command_queue
+    tests/test_command_queue.cpp
+)
+
+add_executable(test_command_flow
+    tests/test_command_flow.cpp
+)
+
 target_link_libraries(main_test
     PRIVATE
         control_basics
@@ -110,6 +129,26 @@ target_link_libraries(test_moving_average_filter
 )
 
 target_link_libraries(test_motion_state_machine
+    PRIVATE
+        control_basics
+)
+
+target_link_libraries(test_command_parser
+    PRIVATE
+        control_basics
+)
+
+target_link_libraries(test_command_executor
+    PRIVATE
+        control_basics
+)
+
+target_link_libraries(test_command_queue
+    PRIVATE
+        control_basics
+)
+
+target_link_libraries(test_command_flow
     PRIVATE
         control_basics
 )

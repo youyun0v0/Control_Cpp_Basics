@@ -213,18 +213,30 @@ PID 控制器模块，用于练习控制器类封装。
 - `Stop`：停止命令
 - `Reset`：错误复位命令
 - `Status`：状态查询命令
+- `SetSpeed`：设置目标速度命令
+- `Move`：设置目标位置命令
+- `Home`：回零命令
 - `Unknown`：未知命令
 
 解析状态枚举：
 
 - `Ok`：解析成功
 - `Empty`：输入为空或标准化后为空
+- `TooFewArguments`：参数太少
+- `TooManyArguments`：参数太多
+- `InvalidArgument`：参数不是合法数字
+- `OutOfRange`：参数是数字，但超出允许范围
 - `Unknown`：无法识别的命令
 
 已实现：
 
 - `parse(input)`：解析字符串并返回 `ParseResult`
 - `normalize(input)`：整理输入，去掉前后空白，并把字母统一转成大写
+- `tokenize(input)`：把标准化后的输入按空白字符拆成命令名和参数
+- `parse_double_token(token, value)`：把字符串参数转换成 `double`
+- `parse_set_speed(input)`：解析 `SET_SPEED speed`
+- `parse_move(input)`：解析 `MOVE x y`
+- `parse_no_argument_command(input, command)`：统一检查无参数命令是否带了多余参数
 
 内部规则：
 
@@ -232,6 +244,20 @@ PID 控制器模块，用于练习控制器类封装。
 - `"STOP\r\n"` 会解析为 `CommandType::Stop`
 - 空字符串或只有空白字符的输入会返回 `ParseStatus::Empty`
 - 未知输入会返回 `ParseStatus::Unknown`
+- `START / STOP / RESET / STATUS / HOME` 是无参数命令，后面跟多余内容会返回 `TooManyArguments`
+- `SET_SPEED 120` 会解析为 `CommandType::SetSpeed`，并保存 1 个参数
+- `MOVE 10 20` 会解析为 `CommandType::Move`，并保存 2 个参数
+- `SET_SPEED` 缺少速度参数时返回 `TooFewArguments`
+- `MOVE 10` 缺少 Y 参数时返回 `TooFewArguments`
+- `SET_SPEED 120 130`、`MOVE 10 20 30` 会返回 `TooManyArguments`
+- `SET_SPEED fast`、`MOVE 10 abc` 会返回 `InvalidArgument`
+- `SET_SPEED` 当前练习范围是 `0.0` 到 `3000.0`
+- `MOVE` 当前练习范围是 `0.0 <= x <= 200.0` 且 `0.0 <= y <= 200.0`
+
+说明：
+
+- 第六周只实现带参数命令的解析和合法性检查。
+- `SetSpeed / Move / Home` 暂时不会由 `CommandExecutor` 执行到状态机，后续速度设置、轨迹规划和回零流程再接入。
 
 ### `CommandExecutor`
 
@@ -437,6 +463,18 @@ cmake --build build
 - 带 `\r\n` 的命令可以解析
 - 小写或混合大小写命令可以解析
 - 只有空白字符的输入返回 `ParseStatus::Empty`
+- `SET_SPEED 120` 能解析成 `SetSpeed`，并保存速度参数
+- `SET_SPEED` 参数太少时返回 `TooFewArguments`
+- `SET_SPEED 120 130` 参数太多时返回 `TooManyArguments`
+- `SET_SPEED fast` 和 `SET_SPEED 12abc` 返回 `InvalidArgument`
+- `SET_SPEED -1` 和 `SET_SPEED 99999` 返回 `OutOfRange`
+- `MOVE 10 20` 能解析成 `Move`，并保存 X/Y 参数
+- `MOVE 10` 参数太少时返回 `TooFewArguments`
+- `MOVE 10 20 30` 参数太多时返回 `TooManyArguments`
+- `MOVE 10 abc` 和 `MOVE abc 1` 返回 `InvalidArgument`
+- `MOVE -1 20` 和 `MOVE 10 999` 返回 `OutOfRange`
+- `START / STOP / RESET / STATUS / HOME` 后面带多余参数时返回 `TooManyArguments`
+- `HOME` 能解析成 `CommandType::Home`
 
 ### `test_command_executor`
 
@@ -527,6 +565,20 @@ cmake --build build
 - 理解了命令队列和采样环形缓冲区的区别：采样数据可以覆盖旧值，未执行命令不能随便覆盖。
 - 学会了写从原始输入到状态机执行结果的完整流程测试。
 
+## 第六周学习记录
+
+- 学习了带参数命令解析，从无参数命令升级到 `SET_SPEED 120` 和 `MOVE 10 20`。
+- 理解了外部输入要先标准化，再分词，再转换参数，最后做合法性检查。
+- 使用 `std::istringstream` 把一行输入拆成 token，也用它把字符串参数转换成 `double`。
+- 为 `ParseResult` 增加了参数数组 `arguments` 和有效参数数量 `argument_count`。
+- 增加了 `TooFewArguments`、`TooManyArguments`、`InvalidArgument`、`OutOfRange` 等解析状态。
+- 理解了参数类型错误和参数范围错误的区别：`fast` 是非法参数，`99999` 是超出范围。
+- 实现了 `SET_SPEED` 的速度参数检查，当前练习范围为 `0.0` 到 `3000.0`。
+- 实现了 `MOVE` 的 X/Y 参数检查，当前练习范围为 `0.0` 到 `200.0`。
+- 实现了 `HOME` 命令解析，并理解它和 `RESET` 的语义不同：`HOME` 是回零，`RESET` 是错误复位。
+- 学会了让无参数命令统一拒绝多余参数，例如 `START 123` 和 `STATUS now`。
+- 理解了第六周只做输入合法性入口，不急着执行 `MOVE` 或规划轨迹。
+
 ## 当前阶段检查标准
 
 完成当前项目后，应能独立说明：
@@ -557,17 +609,23 @@ cmake --build build
 - 为什么命令队列应按先进先出顺序执行。
 - 为什么解析失败的命令不应该进入正常执行流程。
 - 如何说明一条输入命令从字符串到状态机动作的完整路径。
+- 为什么带参数命令需要先拆成 token。
+- 为什么字符串参数要转换成数字后才能检查范围。
+- 为什么 `SET_SPEED fast` 和 `SET_SPEED 99999` 是两类不同错误。
+- 为什么无参数命令后面带参数应该被拒绝。
+- 为什么 `HOME` 和 `RESET` 不能混成一个命令。
+- 为什么第六周只解析 `MOVE`，不做轨迹规划。
 
 ## 后续计划
 
-下一阶段建议继续实现带参数命令：
+下一阶段建议进入轨迹规划：
 
-- `SET_SPEED 120`
-- `MOVE 10 20`
-- 参数数量检查
-- 参数范围检查
-- 字符串转数字
-- 命令错误信息
-- 更接近 G-code 子集的命令格式
+- `TrajectoryPlanner`
+- 点到点运动
+- 梯形速度规划
+- 位置、速度、加速度的关系
+- 判断是否能达到最大速度
+- 根据 `MOVE x y` 的合法目标点生成目标位置和速度序列
+- 后续再把 `MOVE`、状态机、轨迹规划和日志输出连成完整软件闭环
 
 后续重点应继续贴近嵌入式控制场景：固定内存、确定性执行、状态清晰、命令入口清楚、输入合法性明确、测试可复现。

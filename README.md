@@ -27,6 +27,7 @@ control_cpp_basics/
       PIDController.h
       RingBuffer.h
       SignalUtils.h
+      TrajectoryPlanner.h
   src/
     CommandExecutor.cpp
     CommandParser.cpp
@@ -39,6 +40,7 @@ control_cpp_basics/
     PIDController.cpp
     RingBuffer.cpp
     SignalUtils.cpp
+    TrajectoryPlanner.cpp
     main.cpp
   tests/
     test_array_basics.cpp
@@ -47,6 +49,7 @@ control_cpp_basics/
     test_command_parser.cpp
     test_command_queue.cpp
     test_counter.cpp
+    test_trajectory_planner.cpp
     test_lowpassfilter.cpp
     test_math_utils.cpp
     test_motion_state_machine.cpp
@@ -308,6 +311,38 @@ PID 控制器模块，用于练习控制器类封装。
 - 队列满时拒绝继续写入
 - 未知命令不应进入正常执行流程
 
+### `TrajectoryPlanner`
+
+点到点轨迹规划器，用于把目标位置转换成每个控制周期的目标点。
+
+轨迹点结构：
+
+- `TrajectoryPoint`：一维轨迹点，保存 `time / position / velocity`
+- `Trajectory2DPoint`：二维轨迹点，保存 `time / x / y / vx / vy`
+
+已实现：
+
+- `generate_1d()`：根据起点、终点、最大速度、最大加速度和控制周期生成一维轨迹
+- `generate_line_2d()`：根据二维起点和终点生成二维直线轨迹
+- 非法参数检查：拒绝 `max_velocity <= 0.0`、`max_acceleration <= 0.0`、`dt <= 0.0`
+- 零距离处理：起点等于终点时返回一个静止轨迹点
+- 梯形速度规划：长距离时包含加速段、匀速段和减速段
+- 三角速度规划：短距离时达不到最大速度，没有匀速段
+- 反方向运动：通过 `direction` 处理从大位置到小位置的运动
+- 二维直线映射：先按路径长度生成一维轨迹，再按比例映射回 X/Y
+
+内部结构：
+
+- `MaxPoints`：固定轨迹点容量，当前为 `128`
+- `ProfileInfo`：保存轨迹规划的中间计算结果
+- `calculate_profile()`：计算距离、方向、峰值速度、加速时间、匀速时间和总时间
+
+说明：
+
+- 第七周只实现轨迹点生成，不直接控制电机。
+- `MOVE X Y` 目前通过测试验证可以把解析出的 X/Y 参数交给 `TrajectoryPlanner`。
+- 真正把命令、状态机、轨迹规划和日志输出串成完整流程，放到第八周继续完成。
+
 ## 编译方法
 
 在项目目录下运行：
@@ -349,6 +384,7 @@ cmake --build build
 .\build\test_command_executor.exe
 .\build\test_command_queue.exe
 .\build\test_command_flow.exe
+.\build\test_trajectory_planner.exe
 ```
 
 测试程序没有输出表示通过。如果断言失败，程序会中止并报错。
@@ -509,6 +545,20 @@ cmake --build build
 - `Status` 命令不会改变状态机状态
 - 完整流程最终可以让状态机从 `Idle` 进入 `Running`，再进入 `Stopped`
 
+### `test_trajectory_planner`
+
+验证：
+
+- 非法速度、非法加速度、非法控制周期会返回 `0` 个轨迹点
+- 零距离运动返回 `1` 个静止轨迹点
+- 正方向一维运动能从起点到达终点
+- 反方向一维运动能从大位置运动到小位置
+- 一维轨迹最后速度回到 `0.0`
+- 短距离运动不会越过目标位置
+- 二维直线运动能到达目标 X/Y 坐标
+- 二维零距离运动返回一个静止轨迹点
+- `MOVE 30 40` 的解析结果可以作为二维轨迹规划目标
+
 ## 第一周学习记录
 
 - 学习了 C++ 最小工程结构。
@@ -579,6 +629,23 @@ cmake --build build
 - 学会了让无参数命令统一拒绝多余参数，例如 `START 123` 和 `STATUS now`。
 - 理解了第六周只做输入合法性入口，不急着执行 `MOVE` 或规划轨迹。
 
+## 第七周学习记录
+
+- 学习了点到点轨迹规划的基本思路，理解了 `MOVE X Y` 只是目标位置，不等于完整运动轨迹。
+- 新增了 `TrajectoryPoint`，用于保存一维轨迹点的 `time / position / velocity`。
+- 新增了 `Trajectory2DPoint`，用于保存二维轨迹点的 `time / x / y / vx / vy`。
+- 实现了 `TrajectoryPlanner`，使用固定容量数组保存最多 `128` 个轨迹点。
+- 实现了 `generate_1d()`，可以根据起点、终点、最大速度、最大加速度和控制周期生成一维轨迹。
+- 理解了梯形速度规划中的加速段、匀速段和减速段。
+- 理解了短距离运动可能达不到最大速度，因此会变成三角速度规划。
+- 实现了零距离处理，起点等于终点时返回一个静止轨迹点。
+- 实现了反方向运动处理，从大位置运动到小位置时速度和位置方向都应正确。
+- 实现了 `generate_line_2d()`，先按二维路径长度生成一维轨迹，再映射回 X/Y 坐标。
+- 学会了用 `nearly_equal()` 和 `assert()` 检查浮点结果，同时让断言失败位置指向具体测试行。
+- 增加了非法参数、零距离、正向运动、反向运动、短距离运动、二维直线运动和二维零距离测试。
+- 增加了 `MOVE 30 40` 到 `TrajectoryPlanner` 的整合小测，验证第六周解析结果可以交给第七周轨迹规划器。
+- 明确了第七周只生成轨迹点，不直接控制电机，也不把 `CommandExecutor` 改成完整运动执行器。
+
 ## 当前阶段检查标准
 
 完成当前项目后，应能独立说明：
@@ -615,17 +682,25 @@ cmake --build build
 - 为什么无参数命令后面带参数应该被拒绝。
 - 为什么 `HOME` 和 `RESET` 不能混成一个命令。
 - 为什么第六周只解析 `MOVE`，不做轨迹规划。
+- 为什么 `MOVE` 是目标，不是轨迹。
+- 为什么轨迹点需要保存时间、位置和速度。
+- 为什么轨迹规划需要加速段和减速段，不能让速度瞬间跳变。
+- 为什么短距离可能达不到最大速度，只能形成三角速度曲线。
+- 为什么轨迹生成要检查非法速度、非法加速度和非法控制周期。
+- 为什么零距离运动应该返回一个静止轨迹点，而不是当成失败。
+- 为什么反方向运动要单独处理方向。
+- 为什么二维直线轨迹可以先按路径长度做一维规划，再映射回 X/Y。
+- 为什么第七周只把 `MOVE X Y` 的参数交给轨迹规划器，不急着改完整执行器。
 
 ## 后续计划
 
-下一阶段建议进入轨迹规划：
+下一阶段建议进入第八周小型运动控制器整合：
 
-- `TrajectoryPlanner`
-- 点到点运动
-- 梯形速度规划
-- 位置、速度、加速度的关系
-- 判断是否能达到最大速度
-- 根据 `MOVE x y` 的合法目标点生成目标位置和速度序列
-- 后续再把 `MOVE`、状态机、轨迹规划和日志输出连成完整软件闭环
+- 把 `CommandParser`、`MotionStateMachine`、`TrajectoryPlanner` 串成一条更完整的软件流程
+- 让合法的 `MOVE X Y` 参数进入轨迹规划流程
+- 在执行运动前检查状态机是否允许运动
+- 输出简单 CSV 格式轨迹点，便于后续画图和分析
+- 明确 `SET_SPEED` 后续如何影响轨迹规划中的速度参数
+- 继续保持解析、状态机、轨迹规划、日志输出的模块边界清楚
 
 后续重点应继续贴近嵌入式控制场景：固定内存、确定性执行、状态清晰、命令入口清楚、输入合法性明确、测试可复现。

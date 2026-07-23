@@ -18,6 +18,7 @@ add_library(control_basics
     src/CommandParser.cpp
     src/CommandExecutor.cpp
     src/CommandQueue.cpp
+    src/TrajectoryPlanner.cpp
 )
 # 生成静态库,里面包含了我们写的数学工具函数
 # 库是供主程序和测试程序调用的工具函数
@@ -86,6 +87,10 @@ add_executable(test_command_flow
     tests/test_command_flow.cpp
 )
 
+add_executable(test_trajectory_planner
+    tests/test_trajectory_planner.cpp
+)
+
 target_link_libraries(main_test
     PRIVATE
         control_basics
@@ -149,6 +154,11 @@ target_link_libraries(test_command_queue
 )
 
 target_link_libraries(test_command_flow
+    PRIVATE
+        control_basics
+)
+
+target_link_libraries(test_trajectory_planner
     PRIVATE
         control_basics
 )

@@ -19,6 +19,8 @@ add_library(control_basics
     src/CommandExecutor.cpp
     src/CommandQueue.cpp
     src/TrajectoryPlanner.cpp
+    src/MotionController.cpp
+    src/TrajectoryCsvLogger.cpp
 )
 # 生成静态库,里面包含了我们写的数学工具函数
 # 库是供主程序和测试程序调用的工具函数
@@ -91,6 +93,18 @@ add_executable(test_trajectory_planner
     tests/test_trajectory_planner.cpp
 )
 
+add_executable(test_motion_controller
+    tests/test_motion_controller.cpp
+)
+
+add_executable(test_trajectory_csv_logger
+    tests/test_trajectory_csv_logger.cpp
+)
+
+add_executable(test_system_flow
+    tests/test_system_flow.cpp
+)
+
 target_link_libraries(main_test
     PRIVATE
         control_basics
@@ -159,6 +173,21 @@ target_link_libraries(test_command_flow
 )
 
 target_link_libraries(test_trajectory_planner
+    PRIVATE
+        control_basics
+)
+
+target_link_libraries(test_motion_controller
+    PRIVATE
+        control_basics
+)
+
+target_link_libraries(test_trajectory_csv_logger
+    PRIVATE
+        control_basics
+)
+
+target_link_libraries(test_system_flow
     PRIVATE
         control_basics
 )

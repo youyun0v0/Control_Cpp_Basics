@@ -1,4 +1,4 @@
-# Control_Cpp_Basics
+﻿# Control_Cpp_Basics
 
 这个项目用于通过小型控制相关函数和控制模块重建 C++ 工程基础。目标不是写复杂算法，而是练习：
 
@@ -8,6 +8,190 @@
 - 简单控制模块实现
 - `assert` 测试
 - 可复现的编译、运行和验证流程
+
+## 快速回顾
+
+如果隔了一段时间再回来使用这个项目，优先看这一节。
+
+### 完整数据流
+
+```text
+输入字符串
+  -> CommandParser::parse()
+  -> ParseResult
+  -> MotionController::handle()
+  -> MotionStateMachine 判断状态
+  -> TrajectoryPlanner 生成轨迹
+  -> TrajectoryCsvLogger 输出 CSV
+```
+
+### 模块用途和常用接口
+
+| 模块 | 主要用途 | 常用接口 |
+| --- | --- | --- |
+| `MathUtils` | 基础数值工具 | `clamp()`、`mean()`、`max_value()`、`range()` |
+| `SignalUtils` | 信号预处理 | `deadband()`、`normalize_pwm()` |
+| `LowPassFilter` | 平滑单个采样信号 | `update()`、`output()`、`reset()` |
+| `PIDController` | 练习 PID 控制器封装 | `update()`、`reset()`、`integral()` |
+| `RingBuffer` | 保存最近一段固定数量数据 | `push()`、`at()`、`latest()`、`clear()` |
+| `MovingAverageFilter` | 对最近采样做移动平均 | `update()`、`output()`、`count()` |
+| `MotionStateMachine` | 管理设备状态和错误状态 | `start()`、`stop()`、`set_error()`、`reset_error()`、`can_start()` |
+| `CommandParser` | 把字符串命令变成内部命令 | `parse()` |
+| `CommandExecutor` | 执行早期无参数命令到状态机 | `execute()` |
+| `CommandQueue` | 按先进先出保存待执行命令 | `push()`、`pop()`、`full()`、`empty()` |
+| `TrajectoryPlanner` | 把目标位置变成轨迹点 | `generate_1d()`、`generate_line_2d()` |
+| `MotionController` | 串联命令、状态机和轨迹规划 | `handle()`、`target_speed()`、`current_x()`、`current_y()` |
+| `TrajectoryCsvLogger` | 把轨迹点输出成 CSV | `write_2d()` |
+
+### 常用命令流示例
+
+```cpp
+control_basics::CommandParser parser;
+control_basics::MotionController controller;
+control_basics::TrajectoryCsvLogger logger;
+control_basics::TrajectoryPlanner::Trajectory2D trajectory{};
+
+auto parsed = parser.parse("SET_SPEED 80");
+if (parsed.status == control_basics::ParseStatus::Ok) {
+    controller.handle(parsed, trajectory);
+}
+
+parsed = parser.parse("MOVE 30 40");
+if (parsed.status == control_basics::ParseStatus::Ok) {
+    auto result = controller.handle(parsed, trajectory);
+    logger.write_2d(std::cout, trajectory, result.trajectory_count);
+}
+```
+
+### 命令含义
+
+| 命令 | 含义 | 是否生成轨迹 |
+| --- | --- | --- |
+| `START` | 启动状态机 | 否 |
+| `STOP` | 停止状态机 | 否 |
+| `RESET` | 从错误状态复位 | 否 |
+| `STATUS` | 查询状态 | 否 |
+| `SET_SPEED 120` | 设置后续规划速度 | 否 |
+| `MOVE 30 40` | 移动到目标坐标 | 是 |
+| `HOME` | 回到 `(0, 0)` | 是 |
+
+### 最容易混淆的边界
+
+- `ParseStatus` 表示字符串是否解析成功。
+- `ControllerStatus` 表示控制器是否接受并执行命令。
+- `MotionState` 表示设备当前状态。
+- `trajectory_count` 表示固定轨迹数组中有多少个有效点。
+- `HOME` 是运动命令，`RESET` 是错误复位命令。
+- `MOVE` 的字符串解析成功，不代表当前状态一定允许运动。
+- `TrajectoryPlanner` 只生成轨迹，不管理状态，也不输出 CSV。
+- `TrajectoryCsvLogger` 只输出文本，不修改轨迹和控制器状态。
+
+## 八周阶段总总结
+
+这八周的项目不是为了做一个完整工业控制器，而是为了建立一套可继续扩展的 C++ 控制软件基础。
+
+整体进展可以概括为：
+
+```text
+第 1 周：函数、数组、CMake、assert 测试
+第 2 周：class、对象状态、低通滤波器、PID 控制器
+第 3 周：std::array、环形缓冲区、移动平均滤波器
+第 4 周：状态机、错误码、急停、复位
+第 5 周：无参数命令解析、命令执行、命令队列
+第 6 周：带参数命令解析、参数数量检查、参数范围检查
+第 7 周：一维和二维轨迹规划
+第 8 周：命令、状态机、轨迹规划和 CSV 输出整合
+```
+
+到当前阶段，项目已经形成了一个小型控制软件的基本形状：
+
+```text
+外部输入
+  -> 输入合法性检查
+  -> 命令类型和参数
+  -> 状态机约束
+  -> 轨迹规划
+  -> CSV 日志输出
+  -> 测试验证
+```
+
+这套结构的价值不在于算法复杂，而在于边界清楚：
+
+- 输入是否合法，由 `CommandParser` 判断。
+- 设备当前能不能运动，由 `MotionStateMachine` 判断。
+- 目标怎么变成轨迹点，由 `TrajectoryPlanner` 完成。
+- 多个模块如何串起来，由 `MotionController` 管理。
+- 轨迹如何输出给人看，由 `TrajectoryCsvLogger` 完成。
+- 每个模块是否可靠，由对应测试验证。
+
+当前已经具备的工程能力：
+
+- 能把功能拆成 `.h/.cpp`。
+- 能用 `namespace` 管理项目代码。
+- 能用 `class` 封装状态。
+- 能用 `private` 隐藏内部实现。
+- 能用 `enum class` 表达有限状态和命令类型。
+- 能用 `std::array` 设计固定容量数据结构。
+- 能用 `std::istringstream` 解析文本输入。
+- 能用 `std::ostream` 输出通用文本结果。
+- 能用 `assert` 写单元测试和系统级测试。
+- 能用 CMake 管理库、主程序和多个测试程序。
+
+## 当前阶段检查标准
+
+完成当前项目后，应能独立说明：
+
+- `.h` 和 `.cpp` 分别放什么。
+- CMake 如何把库、主程序和测试程序连接起来。
+- 为什么数组函数需要传入 `size`。
+- 为什么只读数组参数要加 `const`。
+- 为什么控制输出要先限幅。
+- 为什么低通滤波器需要保存上一次输出。
+- 为什么 PID 需要保存积分项和上一次误差。
+- 为什么测试有状态模块时不能只调用一次。
+- 为什么边界测试能发现正常输入测不出的错误。
+- 为什么环形缓冲区写满后，内部数组顺序不一定等于时间顺序。
+- 为什么 `at(0)` 表示最旧的有效数据，而 `latest()` 表示最近写入的数据。
+- 为什么移动平均窗口未满时，分母应使用有效数据数量。
+- 为什么移动平均会让数据更平滑，同时也引入响应延迟。
+- 为什么状态机不能让外部直接修改 `state_`。
+- 为什么 `start()` 和 `stop()` 要根据当前状态决定是否成功。
+- 为什么错误状态下不能直接启动。
+- 为什么急停应进入 `Error`，而不是普通 `Stopped`。
+- 为什么测试状态机时要同时测试合法切换和非法切换。
+- 为什么外部字符串命令不能直接修改状态机。
+- 为什么要先把字符串解析成 `CommandType`，再执行命令。
+- 为什么 `Parser` 和 `Executor` 要分开。
+- 为什么 `ParseStatus`、`CommandType`、`ExecuteStatus`、`MotionState` 不是同一类概念。
+- 为什么 `Status` 命令只查询状态，不应该改变状态机。
+- 为什么命令队列应按先进先出顺序执行。
+- 为什么解析失败的命令不应该进入正常执行流程。
+- 如何说明一条输入命令从字符串到状态机动作的完整路径。
+- 为什么带参数命令需要先拆成 token。
+- 为什么字符串参数要转换成数字后才能检查范围。
+- 为什么 `SET_SPEED fast` 和 `SET_SPEED 99999` 是两类不同错误。
+- 为什么无参数命令后面带参数应该被拒绝。
+- 为什么 `HOME` 和 `RESET` 不能混成一个命令。
+- 为什么第六周只解析 `MOVE`，不做轨迹规划。
+- 为什么 `MOVE` 是目标，不是轨迹。
+- 为什么轨迹点需要保存时间、位置和速度。
+- 为什么轨迹规划需要加速段和减速段，不能让速度瞬间跳变。
+- 为什么短距离可能达不到最大速度，只能形成三角速度曲线。
+- 为什么轨迹生成要检查非法速度、非法加速度和非法控制周期。
+- 为什么零距离运动应该返回一个静止轨迹点，而不是当成失败。
+- 为什么反方向运动要单独处理方向。
+- 为什么二维直线轨迹可以先按路径长度做一维规划，再映射回 X/Y。
+- 为什么第七周只把 `MOVE X Y` 的参数交给轨迹规划器，不急着改完整执行器。
+- 为什么需要 `MotionController` 作为整合层。
+- 为什么 `SET_SPEED` 是参数设置命令，不是运动命令。
+- 为什么 `MOVE` 成功后要更新当前位置。
+- 为什么连续两次 `MOVE` 的第二次起点不是 `(0, 0)`。
+- 为什么 `HOME` 是回零运动，`RESET` 是错误复位。
+- 为什么轨迹数组是固定大小，但还需要 `trajectory_count`。
+- 为什么 CSV 输出要只输出有效轨迹点。
+- 为什么 CSV 输出不应该写进 `TrajectoryPlanner`。
+- 为什么解析失败的命令不能进入控制器。
+- 为什么系统级测试要保留，同时单元测试也不能删。
 
 ## 文件结构
 
@@ -22,11 +206,13 @@ control_cpp_basics/
       Counter.h
       LowPassFilter.h
       MathUtils.h
+      MotionController.h
       MotionStateMachine.h
       MovingAverageFilter.h
       PIDController.h
       RingBuffer.h
       SignalUtils.h
+      TrajectoryCsvLogger.h
       TrajectoryPlanner.h
   src/
     CommandExecutor.cpp
@@ -35,11 +221,13 @@ control_cpp_basics/
     Counter.cpp
     LowPassFilter.cpp
     MathUtils.cpp
+    MotionController.cpp
     MotionStateMachine.cpp
     MovingAverageFilter.cpp
     PIDController.cpp
     RingBuffer.cpp
     SignalUtils.cpp
+    TrajectoryCsvLogger.cpp
     TrajectoryPlanner.cpp
     main.cpp
   tests/
@@ -49,7 +237,9 @@ control_cpp_basics/
     test_command_parser.cpp
     test_command_queue.cpp
     test_counter.cpp
+    test_motion_controller.cpp
     test_trajectory_planner.cpp
+    test_trajectory_csv_logger.cpp
     test_lowpassfilter.cpp
     test_math_utils.cpp
     test_motion_state_machine.cpp
@@ -57,6 +247,7 @@ control_cpp_basics/
     test_pid_controller.cpp
     test_ring_buffer.cpp
     test_signal_utils.cpp
+    test_system_flow.cpp
   README.md
 ```
 
@@ -260,7 +451,7 @@ PID 控制器模块，用于练习控制器类封装。
 说明：
 
 - 第六周只实现带参数命令的解析和合法性检查。
-- `SetSpeed / Move / Home` 暂时不会由 `CommandExecutor` 执行到状态机，后续速度设置、轨迹规划和回零流程再接入。
+- `CommandParser` 不负责执行运动，也不直接生成轨迹；第八周开始由 `MotionController` 接收解析结果并调度后续模块。
 
 ### `CommandExecutor`
 
@@ -340,8 +531,80 @@ PID 控制器模块，用于练习控制器类封装。
 说明：
 
 - 第七周只实现轨迹点生成，不直接控制电机。
-- `MOVE X Y` 目前通过测试验证可以把解析出的 X/Y 参数交给 `TrajectoryPlanner`。
-- 真正把命令、状态机、轨迹规划和日志输出串成完整流程，放到第八周继续完成。
+- `MOVE X Y` 的 X/Y 参数可以作为二维轨迹目标。
+- `TrajectoryPlanner` 不关心命令来源，也不负责 CSV 输出；它只负责生成轨迹点。
+
+### `MotionController`
+
+小型运动控制器整合层，用于把命令解析结果、状态机和轨迹规划器连接成一条可执行的软件流程。
+
+控制器返回状态：
+
+- `Ok`：命令执行成功
+- `Rejected`：命令合法，但当前状态或规划结果不允许执行
+- `InvalidCommand`：无效命令或不支持的命令
+
+返回结果结构：
+
+- `status`：本次命令执行结果
+- `trajectory_count`：本次命令生成的有效轨迹点数量
+- `message`：预留的调试说明字段
+
+已实现：
+
+- `handle(command, output)`：接收 `ParseResult`，执行对应控制流程，并把生成的二维轨迹写入 `output`
+- `target_speed()`：读取当前目标速度
+- `current_x()`：读取当前 X 位置
+- `current_y()`：读取当前 Y 位置
+- `state()`：读取内部状态机当前状态
+
+当前命令行为：
+
+- `SET_SPEED speed`：更新后续轨迹规划使用的目标速度，不生成轨迹
+- `MOVE x y`：在状态机允许启动时，按当前位置到目标位置生成二维直线轨迹，并更新当前位置
+- `HOME`：生成当前位置回到 `(0, 0)` 的轨迹，并更新当前位置
+- `START`：调用内部状态机 `start()`
+- `STOP`：调用内部状态机 `stop()`
+- `RESET`：调用内部状态机 `reset_error()`
+- `STATUS`：只查询状态，不改变状态机
+
+内部状态：
+
+- `machine_`：内部 `MotionStateMachine`
+- `planner_`：内部 `TrajectoryPlanner`
+- `target_speed_`：后续运动使用的目标速度，默认 `100.0`
+- `current_x_ / current_y_`：控制器记录的当前位置
+- `max_acceleration_`：轨迹规划使用的最大加速度，当前为练习默认值
+- `dt_`：轨迹规划使用的控制周期，当前为练习默认值
+
+核心规则：
+
+- 解析失败的命令不应该进入 `MotionController`
+- `SET_SPEED` 只改速度参数，不生成轨迹
+- `MOVE` 和 `HOME` 是运动命令，会生成轨迹
+- `HOME` 和 `RESET` 不能混用：`HOME` 是回零运动，`RESET` 是错误复位
+- 轨迹规划失败时返回 `Rejected`，不应默认急停
+- 当前阶段是 PC 端软件模拟，不接真实电机
+
+### `TrajectoryCsvLogger`
+
+轨迹 CSV 输出器，用于把二维轨迹点输出成可查看、可保存、可画图的文本格式。
+
+已实现：
+
+- `write_2d(output, trajectory, count)`：将二维轨迹写入任意 `std::ostream`
+
+输出格式：
+
+```text
+time,x,y,vx,vy
+```
+
+设计说明：
+
+- 使用 `std::ostream&` 作为输出目标，因此同一个接口可以输出到 `std::cout`、`std::ostringstream` 或文件流
+- 只输出前 `count` 个有效轨迹点，不输出固定数组中未使用的默认元素
+- CSV 输出不放在 `MotionController` 或 `TrajectoryPlanner` 中，避免把控制逻辑和日志格式混在一起
 
 ## 编译方法
 
@@ -364,7 +627,7 @@ cmake --build build
 .\build\main_test.exe
 ```
 
-主程序会演示部分数学工具函数、低通滤波器、PID 控制器、移动平均滤波器和状态机的基本调用。
+主程序会演示部分数学工具函数、低通滤波器、PID 控制器、移动平均滤波器和状态机的基本调用，也会展示第八周完成后的最终链路：`CommandParser -> MotionController -> TrajectoryPlanner -> TrajectoryCsvLogger`。
 
 ## 测试方法
 
@@ -385,6 +648,9 @@ cmake --build build
 .\build\test_command_queue.exe
 .\build\test_command_flow.exe
 .\build\test_trajectory_planner.exe
+.\build\test_motion_controller.exe
+.\build\test_trajectory_csv_logger.exe
+.\build\test_system_flow.exe
 ```
 
 测试程序没有输出表示通过。如果断言失败，程序会中止并报错。
@@ -559,6 +825,45 @@ cmake --build build
 - 二维零距离运动返回一个静止轨迹点
 - `MOVE 30 40` 的解析结果可以作为二维轨迹规划目标
 
+### `test_motion_controller`
+
+验证：
+
+- 默认控制器状态为 `Idle`
+- 默认目标速度为 `100.0`
+- 默认当前位置为 `(0.0, 0.0)`
+- `SET_SPEED 120` 能更新目标速度
+- `SET_SPEED` 不生成轨迹点
+- 缺少速度参数的 `SET_SPEED` 不会被控制器正常接受
+- `MOVE 30 40` 能生成二维轨迹
+- `MOVE` 生成的最后一个轨迹点到达目标位置
+- `MOVE` 成功后会更新 `current_x()` 和 `current_y()`
+- 连续两次 `MOVE` 时，第二次轨迹从上一次目标位置开始
+- `HOME` 能从当前位置生成回到 `(0, 0)` 的轨迹
+- `STATUS` 不改变状态机状态
+- `START` 能让控制器状态进入 `Running`
+- `STOP` 能让控制器状态进入 `Stopped`
+- `RESET` 不生成轨迹
+
+### `test_trajectory_csv_logger`
+
+验证：
+
+- CSV 输出包含表头 `time,x,y,vx,vy`
+- 一个二维轨迹点可以被输出成一行 CSV
+- `count` 会限制有效输出点数量
+- 固定数组中未使用的默认轨迹点不会被输出
+
+### `test_system_flow`
+
+验证：
+
+- 字符串 `"MOVE 30 40"` 可以经过解析、控制器执行、轨迹生成和 CSV 输出形成完整流程
+- `SET_SPEED 80` 后再执行 `MOVE 30 40` 时，同一个控制器会保留目标速度
+- 解析失败的输入不会进入控制器，当前位置、目标速度和状态机状态保持不变
+- `MOVE 30 40` 后执行 `HOME` 可以让当前位置回到 `(0, 0)`
+- 系统级测试使用同一个 `MotionController` 验证连续命令中的内部状态保留
+
 ## 第一周学习记录
 
 - 学习了 C++ 最小工程结构。
@@ -646,61 +951,25 @@ cmake --build build
 - 增加了 `MOVE 30 40` 到 `TrajectoryPlanner` 的整合小测，验证第六周解析结果可以交给第七周轨迹规划器。
 - 明确了第七周只生成轨迹点，不直接控制电机，也不把 `CommandExecutor` 改成完整运动执行器。
 
-## 当前阶段检查标准
+## 第八周学习记录
 
-完成当前项目后，应能独立说明：
+- 新增了 `MotionController`，作为命令解析结果、状态机和轨迹规划器之间的整合层。
+- 理解了整合层的职责：不重新解析字符串、不直接输出 CSV，而是按顺序调度已有模块。
+- 接入了 `SET_SPEED`，可以更新后续轨迹规划使用的目标速度。
+- 理解了目标速度不是当前速度，也不是轨迹点瞬时速度，而是后续 `MOVE / HOME` 的规划参数。
+- 接入了 `MOVE X Y`，可以在状态机允许启动时，从当前位置生成到目标位置的二维直线轨迹。
+- 理解了 `trajectory_count` 的含义：固定轨迹数组中本次真正有效的轨迹点数量。
+- 实现了连续 `MOVE` 的位置更新，第二次移动会以上一次目标点作为起点。
+- 接入了 `HOME`，可以从当前位置生成回到 `(0, 0)` 的轨迹。
+- 明确区分了 `HOME` 和 `RESET`：`HOME` 是运动回零，`RESET` 是错误复位。
+- 接入了 `START / STOP / STATUS / RESET` 的控制器路径，并通过返回状态说明命令是否被接受。
+- 调整了轨迹规划失败时的处理：规划失败应返回 `Rejected`，不应默认急停。
+- 新增了 `TrajectoryCsvLogger`，把二维轨迹输出为 `time,x,y,vx,vy` CSV 格式。
+- 理解了 `std::ostream` 是通用输出接口，可以输出到字符串、终端或文件。
+- 使用 `std::ostringstream` 测试 CSV 输出，避免依赖人工查看终端文本。
+- 增加了 `test_motion_controller`，验证速度设置、移动、回零、状态查询和启动停止。
+- 增加了 `test_trajectory_csv_logger`，验证 CSV 表头、单点输出和 `count` 限制。
+- 增加了 `test_system_flow`，验证从字符串命令到控制器、轨迹生成和 CSV 输出的完整链路。
+- 理解了单元测试和系统级测试的区别：前者验证单个模块，后者验证多个模块之间的连接。
+- 完成了前八周从 C++ 基础函数到小型运动控制软件骨架的阶段性收束。
 
-- `.h` 和 `.cpp` 分别放什么。
-- CMake 如何把库、主程序和测试程序连接起来。
-- 为什么数组函数需要传入 `size`。
-- 为什么只读数组参数要加 `const`。
-- 为什么控制输出要先限幅。
-- 为什么低通滤波器需要保存上一次输出。
-- 为什么 PID 需要保存积分项和上一次误差。
-- 为什么测试有状态模块时不能只调用一次。
-- 为什么边界测试能发现正常输入测不出的错误。
-- 为什么环形缓冲区写满后，内部数组顺序不一定等于时间顺序。
-- 为什么 `at(0)` 表示最旧的有效数据，而 `latest()` 表示最近写入的数据。
-- 为什么移动平均窗口未满时，分母应使用有效数据数量。
-- 为什么移动平均会让数据更平滑，同时也引入响应延迟。
-- 为什么状态机不能让外部直接修改 `state_`。
-- 为什么 `start()` 和 `stop()` 要根据当前状态决定是否成功。
-- 为什么错误状态下不能直接启动。
-- 为什么急停应进入 `Error`，而不是普通 `Stopped`。
-- 为什么测试状态机时要同时测试合法切换和非法切换。
-- 为什么外部字符串命令不能直接修改状态机。
-- 为什么要先把字符串解析成 `CommandType`，再执行命令。
-- 为什么 `Parser` 和 `Executor` 要分开。
-- 为什么 `ParseStatus`、`CommandType`、`ExecuteStatus`、`MotionState` 不是同一类概念。
-- 为什么 `Status` 命令只查询状态，不应该改变状态机。
-- 为什么命令队列应按先进先出顺序执行。
-- 为什么解析失败的命令不应该进入正常执行流程。
-- 如何说明一条输入命令从字符串到状态机动作的完整路径。
-- 为什么带参数命令需要先拆成 token。
-- 为什么字符串参数要转换成数字后才能检查范围。
-- 为什么 `SET_SPEED fast` 和 `SET_SPEED 99999` 是两类不同错误。
-- 为什么无参数命令后面带参数应该被拒绝。
-- 为什么 `HOME` 和 `RESET` 不能混成一个命令。
-- 为什么第六周只解析 `MOVE`，不做轨迹规划。
-- 为什么 `MOVE` 是目标，不是轨迹。
-- 为什么轨迹点需要保存时间、位置和速度。
-- 为什么轨迹规划需要加速段和减速段，不能让速度瞬间跳变。
-- 为什么短距离可能达不到最大速度，只能形成三角速度曲线。
-- 为什么轨迹生成要检查非法速度、非法加速度和非法控制周期。
-- 为什么零距离运动应该返回一个静止轨迹点，而不是当成失败。
-- 为什么反方向运动要单独处理方向。
-- 为什么二维直线轨迹可以先按路径长度做一维规划，再映射回 X/Y。
-- 为什么第七周只把 `MOVE X Y` 的参数交给轨迹规划器，不急着改完整执行器。
-
-## 后续计划
-
-下一阶段建议进入第八周小型运动控制器整合：
-
-- 把 `CommandParser`、`MotionStateMachine`、`TrajectoryPlanner` 串成一条更完整的软件流程
-- 让合法的 `MOVE X Y` 参数进入轨迹规划流程
-- 在执行运动前检查状态机是否允许运动
-- 输出简单 CSV 格式轨迹点，便于后续画图和分析
-- 明确 `SET_SPEED` 后续如何影响轨迹规划中的速度参数
-- 继续保持解析、状态机、轨迹规划、日志输出的模块边界清楚
-
-后续重点应继续贴近嵌入式控制场景：固定内存、确定性执行、状态清晰、命令入口清楚、输入合法性明确、测试可复现。
